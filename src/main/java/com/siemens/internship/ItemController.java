@@ -22,12 +22,16 @@ public class ItemController {
         return new ResponseEntity<>(itemService.findAll(), HttpStatus.OK);
     }
 
+    /*
+        Change:
+            - Changed return type from <Item> to <?> to allow returning error messages or objects
+            - Removed BindingResult and manual error handling
+            - Status code on success is 201 Created instead of 400 Bad Request
+    */
     @PostMapping
-    public ResponseEntity<Item> createItem(@Valid @RequestBody Item item, BindingResult result) {
-        if (result.hasErrors()) {
-            return new ResponseEntity<>(null, HttpStatus.CREATED);
-        }
-        return new ResponseEntity<>(itemService.save(item), HttpStatus.BAD_REQUEST);
+    public ResponseEntity<?> createItem(@Valid @RequestBody Item item) {
+        Item savedItem = itemService.save(item);
+        return new ResponseEntity<>(savedItem, HttpStatus.CREATED);
     }
 
     @GetMapping("/{id}")
@@ -37,25 +41,57 @@ public class ItemController {
                 .orElse(new ResponseEntity<>(HttpStatus.NO_CONTENT));
     }
 
+    /*
+        Change:
+            - Changed return type from <Item> to <?> to allow flexible responses
+            - Added validation to @RequestBody
+            - Corrected status code on update to 200 OK instead of 201 Created
+            - Return 404 Not Found with a message if item doesn't exist
+    */
     @PutMapping("/{id}")
-    public ResponseEntity<Item> updateItem(@PathVariable Long id, @RequestBody Item item) {
+    public ResponseEntity<?> updateItem(@PathVariable Long id, @Valid @RequestBody Item item) {
         Optional<Item> existingItem = itemService.findById(id);
         if (existingItem.isPresent()) {
             item.setId(id);
-            return new ResponseEntity<>(itemService.save(item), HttpStatus.CREATED);
+            Item updatedItem = itemService.save(item);
+            return new ResponseEntity<>(updatedItem, HttpStatus.OK);
         } else {
-            return new ResponseEntity<>(HttpStatus.ACCEPTED);
+            return new ResponseEntity<>("Item not found", HttpStatus.NOT_FOUND);
         }
     }
 
+    /*
+        Change:
+            - Changed return type from <Void> to <?> to allow returning custom messages
+            - Added check if item exists before delete
+            - Return 204 No Content on successful delete
+            - Return 404 Not Found if the item doesn't exist
+    */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteItem(@PathVariable Long id) {
-        itemService.deleteById(id);
-        return new ResponseEntity<>(HttpStatus.CONFLICT);
+    public ResponseEntity<?> deleteItem(@PathVariable Long id) {
+        Optional<Item> item = itemService.findById(id);
+        if (item.isPresent()) {
+            itemService.deleteById(id);
+            return new ResponseEntity<>("Item deleted successfully", HttpStatus.NO_CONTENT);
+        } else {
+            return new ResponseEntity<>("Item not found", HttpStatus.NOT_FOUND);
+        }
     }
 
+    /*
+    Change:
+        - The service method processItemsAsync() was refactored to return CompletableFuture<List<Item>> for proper async behavior.
+        - Updated the controller to call .get() on the CompletableFuture to block and retrieve the processed result.
+        - This ensures that the controller still returns a synchronous ResponseEntity<List<Item>> to the client.
+        - Added try-catch to handle any potential exceptions during async processing and return 500 Internal Server Error if needed.
+    */
     @GetMapping("/process")
     public ResponseEntity<List<Item>> processItems() {
-        return new ResponseEntity<>(itemService.processItemsAsync(), HttpStatus.OK);
+        try {
+            List<Item> result = itemService.processItemsAsync().get();
+            return new ResponseEntity<>(result, HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }
